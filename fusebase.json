@@ -1,0 +1,19 @@
+{
+  "orgId": "ur6j6",
+  "appId": "lztgw7eqxdo0fbiy",
+  "env": "prod",
+  "features": [
+    {
+      "id": "nrgpblofgvf2ihx1",
+      "path": ".",
+      "dev": {
+        "command": "npm run dev"
+      },
+      "build": {
+        "command": "npm run build",
+        "outputDir": "dist"
+      }
+    }
+  ],
+  "firstFeatureSub": "digicollab-course"
+}
