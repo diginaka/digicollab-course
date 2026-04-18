@@ -2,7 +2,7 @@
 export interface Chapter {
   id: string
   title: string
-  videoType: 'vimeo' | 'gdrive' | 'other'
+  videoType: 'youtube' | 'vimeo' | 'gdrive' | 'other'
   videoUrl: string
   textContent: string
   attachments: string[]

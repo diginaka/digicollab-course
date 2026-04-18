@@ -140,6 +140,7 @@ export default function StudioStep2({ chapters, setChapters, onNext, onBack }: P
                 onChange={e => setEditingChapter({ ...editingChapter, videoType: e.target.value as Chapter['videoType'] })}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm bg-white"
               >
+                <option value="youtube">YouTube</option>
                 <option value="vimeo">Vimeo</option>
                 <option value="gdrive">Google Drive</option>
                 <option value="other">その他URL</option>

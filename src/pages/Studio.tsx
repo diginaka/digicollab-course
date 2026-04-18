@@ -122,7 +122,7 @@ export default function Studio() {
       setChapters(slotChapters.map((ch, i) => ({
         id: String(ch.id || `ch-${i}`),
         title: String(ch.title || ''),
-        videoType: (['vimeo', 'gdrive', 'other'].includes(String(ch.video_type)) ? ch.video_type : 'vimeo') as Chapter['videoType'],
+        videoType: (['youtube', 'vimeo', 'gdrive', 'other'].includes(String(ch.video_type)) ? ch.video_type : 'vimeo') as Chapter['videoType'],
         videoUrl: String(ch.video_url || ''),
         textContent: String(ch.text_content || ''),
         attachments: Array.isArray(ch.attachments) ? ch.attachments.map(String) : [],
