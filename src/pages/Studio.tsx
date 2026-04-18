@@ -6,7 +6,9 @@ import StudioStep2 from './StudioStep2'
 import StudioStep3 from './StudioStep3'
 import { loadHistory } from '../lib/storage'
 import { supabase } from '../lib/supabase'
-import type { Chapter, HistoryEntry } from '../types'
+import { generateId } from '../lib/utils'
+import { mergeDescriptionAndGoal } from '../lib/bulkGenerate'
+import type { Chapter, HistoryEntry, GeneratedCourse, UserOverrides } from '../types'
 
 const stepLabels = ['企画', 'コンテンツ', '公開']
 
@@ -20,12 +22,80 @@ export default function Studio() {
   const [showHistory, setShowHistory] = useState(false)
   const [editingPageId, setEditingPageId] = useState<string | null>(null)
 
-  // フォーム初期値（再編集時にpagesから復元）
+  // フォーム初期値（再編集時にpagesから復元、AI一括生成でも上書き）
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [password, setPassword] = useState('')
   const [themeColor, setThemeColor] = useState('#059669')
   const [thumbnailUrl, setThumbnailUrl] = useState('')
+
+  // AI一括生成メタデータ
+  const [thumbnailCopy, setThumbnailCopy] = useState('')
+  const [totalDuration, setTotalDuration] = useState('')
+  const [completionMessage, setCompletionMessage] = useState('')
+  const [completionCtaLabel, setCompletionCtaLabel] = useState('')
+
+  // 手動編集保護の追跡（キー: "title" | "description" | "chapters.{i}.title" | "chapters.{i}.text_content"）
+  const [userOverrides, setUserOverrides] = useState<UserOverrides>({})
+
+  // AI一括生成結果を反映（user_overridesで保護されたフィールドは上書きしない）
+  const handleBulkApply = useCallback((result: GeneratedCourse) => {
+    if (!userOverrides['title']) setTitle(result.courseTitle)
+    if (!userOverrides['description']) setDescription(result.courseDescription)
+    setThumbnailCopy(result.thumbnailCopy)
+    setTotalDuration(result.totalDuration)
+    setCompletionMessage(result.completionMessage)
+    setCompletionCtaLabel(result.completionCtaLabel)
+
+    // chaptersに反映（既存チャプターと同じIDの場合はuser_overridesを確認）
+    const newChapters: Chapter[] = result.lessons.map((lesson, i) => {
+      const existing = chapters[i]
+      const keepTitle = existing && userOverrides[`chapters.${i}.title`]
+      const keepContent = existing && userOverrides[`chapters.${i}.text_content`]
+      return {
+        id: existing?.id || generateId(),
+        title: keepTitle ? existing.title : lesson.title,
+        videoType: existing?.videoType || 'vimeo',
+        videoUrl: existing?.videoUrl || '',
+        textContent: keepContent ? existing.textContent : mergeDescriptionAndGoal(lesson),
+        attachments: existing?.attachments || [],
+        duration: existing?.duration || '',
+        sortOrder: i,
+      }
+    })
+    setChapters(newChapters)
+    setStep(1)
+  }, [userOverrides, chapters])
+
+  // 全部作り直す: user_overridesをクリア → 再生成をトリガー可能な状態に
+  const handleRegenerateAll = useCallback(() => {
+    setUserOverrides({})
+  }, [])
+
+  // setter wrappers: 手動変更を検知してuser_overridesに記録
+  const handleTitleChange = useCallback((v: string) => {
+    setTitle(v)
+    setUserOverrides(prev => ({ ...prev, title: true }))
+  }, [])
+  const handleDescriptionChange = useCallback((v: string) => {
+    setDescription(v)
+    setUserOverrides(prev => ({ ...prev, description: true }))
+  }, [])
+  const handleChaptersChange = useCallback((newChapters: Chapter[]) => {
+    // 既存チャプターとの差分を検出してuser_overridesに記録
+    setChapters(prevChapters => {
+      const overrides: UserOverrides = { ...userOverrides }
+      newChapters.forEach((ch, i) => {
+        const prev = prevChapters[i]
+        if (prev) {
+          if (prev.title !== ch.title) overrides[`chapters.${i}.title`] = true
+          if (prev.textContent !== ch.textContent) overrides[`chapters.${i}.text_content`] = true
+        }
+      })
+      setUserOverrides(overrides)
+      return newChapters
+    })
+  }, [userOverrides])
 
   // 履歴からロード（pagesからslotsを取得 → state展開）
   const handleLoadHistory = useCallback(async (entry: HistoryEntry) => {
@@ -60,6 +130,20 @@ export default function Studio() {
         sortOrder: i,
       })))
 
+      // メタデータ復元
+      setThumbnailCopy(String(slots.thumbnail_copy || ''))
+      setTotalDuration(String(slots.total_duration || ''))
+      setCompletionMessage(String(slots.completion_message || ''))
+      setCompletionCtaLabel(String(slots.completion_cta_label || ''))
+
+      // 再編集時はすべての既存値を「手動編集済み」扱いに
+      const restoredOverrides: UserOverrides = { title: true, description: true }
+      slotChapters.forEach((_, i) => {
+        restoredOverrides[`chapters.${i}.title`] = true
+        restoredOverrides[`chapters.${i}.text_content`] = true
+      })
+      setUserOverrides(restoredOverrides)
+
       setEditingPageId(data.id)
       setStep(1)
       setShowHistory(false)
@@ -74,8 +158,13 @@ export default function Studio() {
     setPassword('')
     setThemeColor('#059669')
     setThumbnailUrl('')
+    setThumbnailCopy('')
+    setTotalDuration('')
+    setCompletionMessage('')
+    setCompletionCtaLabel('')
     setChapters([])
     setTeleprompterText('')
+    setUserOverrides({})
     setEditingPageId(null)
     setStep(0)
   }, [])
@@ -127,12 +216,15 @@ export default function Studio() {
             setTeleprompterText={setTeleprompterText}
             chapters={chapters}
             onNext={() => setStep(1)}
+            onBulkApply={handleBulkApply}
+            onRegenerateAll={handleRegenerateAll}
+            userOverridesCount={Object.keys(userOverrides).length}
           />
         )}
         {step === 1 && (
           <StudioStep2
             chapters={chapters}
-            setChapters={setChapters}
+            setChapters={handleChaptersChange}
             onNext={() => setStep(2)}
             onBack={() => setStep(0)}
           />
@@ -141,11 +233,20 @@ export default function Studio() {
           <StudioStep3
             chapters={chapters}
             editingPageId={editingPageId}
-            initialTitle={title}
-            initialDescription={description}
-            initialPassword={password}
-            initialThemeColor={themeColor}
-            initialThumbnailUrl={thumbnailUrl}
+            title={title}
+            description={description}
+            password={password}
+            themeColor={themeColor}
+            thumbnailUrl={thumbnailUrl}
+            thumbnailCopy={thumbnailCopy}
+            totalDuration={totalDuration}
+            completionMessage={completionMessage}
+            completionCtaLabel={completionCtaLabel}
+            onTitleChange={handleTitleChange}
+            onDescriptionChange={handleDescriptionChange}
+            onPasswordChange={setPassword}
+            onThemeColorChange={setThemeColor}
+            onThumbnailUrlChange={setThumbnailUrl}
             setEditingPageId={setEditingPageId}
             onBack={() => setStep(1)}
             onEditAgain={() => setStep(1)}

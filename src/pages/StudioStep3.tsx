@@ -9,11 +9,22 @@ import type { Chapter } from '../types'
 interface Props {
   chapters: Chapter[]
   editingPageId: string | null
-  initialTitle: string
-  initialDescription: string
-  initialPassword: string
-  initialThemeColor: string
-  initialThumbnailUrl: string
+  title: string
+  description: string
+  password: string
+  themeColor: string
+  thumbnailUrl: string
+  // AI一括生成メタデータ（slotsに保存）
+  thumbnailCopy: string
+  totalDuration: string
+  completionMessage: string
+  completionCtaLabel: string
+  // setter props（親に手動編集を通知）
+  onTitleChange: (v: string) => void
+  onDescriptionChange: (v: string) => void
+  onPasswordChange: (v: string) => void
+  onThemeColorChange: (v: string) => void
+  onThumbnailUrlChange: (v: string) => void
   setEditingPageId: (id: string | null) => void
   onBack: () => void
   onEditAgain: () => void
@@ -46,16 +57,11 @@ async function generateThumbnail(title: string, themeColor: string, straicoApiKe
 
 export default function StudioStep3({
   chapters, editingPageId,
-  initialTitle, initialDescription, initialPassword, initialThemeColor, initialThumbnailUrl,
+  title, description, password, themeColor, thumbnailUrl,
+  thumbnailCopy, totalDuration, completionMessage, completionCtaLabel,
+  onTitleChange, onDescriptionChange, onPasswordChange, onThemeColorChange, onThumbnailUrlChange,
   setEditingPageId, onBack, onEditAgain, onNewCourse,
 }: Props) {
-  // フォーム
-  const [title, setTitle] = useState(initialTitle)
-  const [description, setDescription] = useState(initialDescription)
-  const [password, setPassword] = useState(initialPassword)
-  const [themeColor, setThemeColor] = useState(initialThemeColor || '#059669')
-  const [thumbnailUrl, setThumbnailUrl] = useState(initialThumbnailUrl)
-
   // 状態
   const [publishing, setPublishing] = useState(false)
   const [publishingStatus, setPublishingStatus] = useState('')
@@ -108,12 +114,13 @@ export default function StudioStep3({
       const slots = {
         course_title: title,
         course_description: description,
+        thumbnail_copy: thumbnailCopy || description,
         theme_color: themeColor || '#059669',
         password_protected: !!password,
         password: password || null,
         chapter_count: chapters.length,
         video_count: videoCount,
-        total_duration: '',
+        total_duration: totalDuration || '',
         chapters: chapters.map((ch, i) => ({
           id: `ch-${String(i + 1).padStart(2, '0')}`,
           title: ch.title,
@@ -127,9 +134,9 @@ export default function StudioStep3({
         current_chapter_id: 'ch-01',
         seller_name: (user.user_metadata as Record<string, string> | null)?.name || '',
         seller_email: user.email,
-        completion_message: '全チャプター、お疲れさまでした。',
+        completion_message: completionMessage || '全チャプター、お疲れさまでした。',
         completion_cta_url: '',
-        completion_cta_label: '',
+        completion_cta_label: completionCtaLabel || '',
       }
 
       setPublishingStatus(isEditing ? '更新中...' : 'pagesに登録中...')
@@ -205,7 +212,7 @@ export default function StudioStep3({
       setPublishing(false)
       setPublishingStatus('')
     }
-  }, [title, description, password, themeColor, thumbnailUrl, chapters, videoCount, editingPageId, isEditing, setEditingPageId, viewerUrl])
+  }, [title, description, password, themeColor, thumbnailUrl, thumbnailCopy, totalDuration, completionMessage, completionCtaLabel, chapters, videoCount, editingPageId, isEditing, setEditingPageId, viewerUrl])
 
   // 公開後の画面
   if (published) {
@@ -260,28 +267,28 @@ export default function StudioStep3({
       <div className="space-y-5">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">タイトル <span className="text-red-500">*</span></label>
-          <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="コースのタイトル"
+          <input type="text" value={title} onChange={e => onTitleChange(e.target.value)} placeholder="コースのタイトル"
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm transition" />
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">説明 <span className="text-red-500">*</span></label>
-          <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} placeholder="コースの説明文"
+          <textarea value={description} onChange={e => onDescriptionChange(e.target.value)} rows={3} placeholder="コースの説明文"
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm resize-none transition" />
         </div>
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">閲覧パスワード（任意）</label>
-            <input type="text" value={password} onChange={e => setPassword(e.target.value)} placeholder="空ならパスワードなし"
+            <input type="text" value={password} onChange={e => onPasswordChange(e.target.value)} placeholder="空ならパスワードなし"
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm transition" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">テーマカラー</label>
             <div className="flex gap-2">
-              <input type="color" value={themeColor} onChange={e => setThemeColor(e.target.value)}
+              <input type="color" value={themeColor} onChange={e => onThemeColorChange(e.target.value)}
                 className="w-12 h-10 border border-gray-300 rounded-lg cursor-pointer" />
-              <input type="text" value={themeColor} onChange={e => setThemeColor(e.target.value)}
+              <input type="text" value={themeColor} onChange={e => onThemeColorChange(e.target.value)}
                 className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm font-mono transition" />
             </div>
           </div>
@@ -292,7 +299,7 @@ export default function StudioStep3({
           <label className="block text-sm font-medium text-gray-700 mb-1">
             <Image className="w-4 h-4 inline mr-1 -mt-0.5" />サムネイル画像URL（任意）
           </label>
-          <input type="url" value={thumbnailUrl} onChange={e => setThumbnailUrl(e.target.value)}
+          <input type="url" value={thumbnailUrl} onChange={e => onThumbnailUrlChange(e.target.value)}
             placeholder="https://drive.google.com/..."
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm transition" />
           <p className="text-xs text-gray-500 mt-1.5">

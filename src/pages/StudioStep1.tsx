@@ -1,19 +1,32 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, FileText, Play, Pause, RotateCcw, ChevronUp, ChevronDown, ArrowRight, Loader2, ChevronLeft, ChevronRight, CheckSquare, Square, Smartphone, Monitor } from 'lucide-react'
+import { Send, FileText, Play, Pause, RotateCcw, ChevronUp, ChevronDown, ArrowRight, Loader2, ChevronLeft, ChevronRight, CheckSquare, Square, Smartphone, Monitor, Sparkles, Wand2, RefreshCw, Check } from 'lucide-react'
 import { loadSettings } from '../lib/storage'
 import { loadProSettings } from '../lib/supabase'
 import { sendAIMessage } from '../lib/ai'
-import type { ChatMessage, Chapter } from '../types'
+import { generateCourseBulk } from '../lib/bulkGenerate'
+import type { ChatMessage, Chapter, GeneratedCourse, BulkGenerateInput } from '../types'
 
 interface Props {
   teleprompterText: string
   setTeleprompterText: (t: string) => void
   chapters: Chapter[]
   onNext: () => void
+  onBulkApply: (result: GeneratedCourse) => void
+  onRegenerateAll: () => void
+  userOverridesCount: number
 }
 
-export default function StudioStep1({ teleprompterText, setTeleprompterText, chapters, onNext }: Props) {
-  const [tab, setTab] = useState<'chat' | 'teleprompter'>('chat')
+type Tab = 'chat' | 'teleprompter' | 'bulk'
+
+const TONE_OPTIONS = [
+  { value: 'friendly', label: 'フレンドリー' },
+  { value: 'professional', label: 'プロフェッショナル' },
+  { value: 'approachable', label: '親しみやすい' },
+  { value: 'authoritative', label: '権威的' },
+] as const
+
+export default function StudioStep1({ teleprompterText, setTeleprompterText, chapters, onNext, onBulkApply, onRegenerateAll, userOverridesCount }: Props) {
+  const [tab, setTab] = useState<Tab>('chat')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -33,6 +46,14 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
   // FacePop録画ウィジェット
   const [widgetId, setWidgetId] = useState('')
 
+  // AI一括生成
+  const [bulkTheme, setBulkTheme] = useState('')
+  const [bulkLessonCount, setBulkLessonCount] = useState(5)
+  const [bulkTone, setBulkTone] = useState<BulkGenerateInput['tone']>('friendly')
+  const [bulkGenerating, setBulkGenerating] = useState(false)
+  const [bulkResult, setBulkResult] = useState<GeneratedCourse | null>(null)
+  const [bulkError, setBulkError] = useState('')
+
   // 録画ウィジェットIDを読み込み
   useEffect(() => {
     loadProSettings().then(ps => {
@@ -45,7 +66,6 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
   // FacePop SDKロード（ウィジェットID設定済みの場合のみ）
   useEffect(() => {
     if (!widgetId || tab !== 'teleprompter') return
-    // FacePop SDKを動的ロード
     const existingScript = document.querySelector('script[src*="facepop"]')
     if (existingScript) return
 
@@ -53,7 +73,6 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
     script.src = 'https://cdn.facepop.io/facepop.js'
     script.async = true
     script.onload = () => {
-      // FacePop初期化
       const w = window as unknown as Record<string, unknown>
       if (typeof w.FacePop === 'function') {
         w.FacePop = new (w.FacePop as new (opts: Record<string, unknown>) => unknown)({
@@ -64,7 +83,6 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
     document.body.appendChild(script)
 
     return () => {
-      // クリーンアップ時にFacePopを削除
       const fpElements = document.querySelectorAll('[id^="facepop"]')
       fpElements.forEach(el => el.remove())
     }
@@ -113,6 +131,48 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
     }
     setTab('teleprompter')
   }, [setTeleprompterText, teleprompterText])
+
+  // AI一括生成実行
+  const handleBulkGenerate = useCallback(async () => {
+    if (!bulkTheme.trim() || bulkGenerating) return
+    setBulkError('')
+    setBulkResult(null)
+    setBulkGenerating(true)
+    try {
+      const settings = loadSettings()
+      // pro_settingsからもAI設定をマージ（管理画面未保存でもクラウド値を使う）
+      const ps = await loadProSettings()
+      const ai = {
+        ...settings.ai,
+        provider: (ps.ai_provider as typeof settings.ai.provider) || settings.ai.provider,
+        apiKey: ps[`${settings.ai.provider}_api_key`] || ps[`${ps.ai_provider}_api_key`] || settings.ai.apiKey,
+        model: ps.ai_model || settings.ai.model,
+        baseUrl: ps.openai_base_url || settings.ai.baseUrl,
+      }
+      const result = await generateCourseBulk(
+        { theme: bulkTheme, lessonCount: bulkLessonCount, tone: bulkTone },
+        ai
+      )
+      setBulkResult(result)
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : '生成に失敗しました')
+    } finally {
+      setBulkGenerating(false)
+    }
+  }, [bulkTheme, bulkLessonCount, bulkTone, bulkGenerating])
+
+  // 生成結果を承認 → Studioに反映
+  const handleBulkConfirm = useCallback(() => {
+    if (!bulkResult) return
+    onBulkApply(bulkResult)
+    setBulkResult(null)
+  }, [bulkResult, onBulkApply])
+
+  // 全部作り直す: user_overridesをクリア + 再実行
+  const handleBulkRegenerateAll = useCallback(async () => {
+    onRegenerateAll()
+    await handleBulkGenerate()
+  }, [onRegenerateAll, handleBulkGenerate])
 
   // テレプロンプタースクロール制御
   useEffect(() => {
@@ -173,6 +233,12 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'teleprompter' ? 'bg-emerald-100 text-emerald-700' : 'text-gray-500 hover:text-gray-700'}`}
         >
           テレプロンプター
+        </button>
+        <button
+          onClick={() => setTab('bulk')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${tab === 'bulk' ? 'bg-emerald-100 text-emerald-700' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          <Sparkles className="w-4 h-4" /> AI一括生成
         </button>
       </div>
 
@@ -237,7 +303,6 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
       {/* テレプロンプター */}
       {tab === 'teleprompter' && (
         <div className="flex-1 flex flex-col min-h-0">
-          {/* チャプターナビ（チャプターがある場合） */}
           {chapters.length > 0 && (
             <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-2.5 mb-3 flex-shrink-0">
               <button onClick={() => setChapterIndex(Math.max(0, chapterIndex - 1))} disabled={chapterIndex === 0}
@@ -270,7 +335,6 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
             </div>
           )}
 
-          {/* コントロール */}
           <div className="mt-3 flex items-center justify-center gap-2 flex-wrap flex-shrink-0">
             {chapters.length > 0 && (
               <button onClick={() => setChapterIndex(Math.max(0, chapterIndex - 1))} disabled={chapterIndex === 0}
@@ -278,16 +342,12 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
                 <ChevronLeft className="w-4 h-4 inline -mt-0.5" /> 前の台本
               </button>
             )}
-            <button onClick={() => setTab('chat')} className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors">
-              編集
-            </button>
+            <button onClick={() => setTab('chat')} className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors">編集</button>
             <button onClick={() => nudge('up')} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors">
               <ChevronUp className="w-5 h-5" />
             </button>
             <button onClick={() => setSpeed(s => s === 3 ? 1 : s + 1)}
-              className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 font-mono min-w-[48px] transition-colors">
-              x{speed}
-            </button>
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 font-mono min-w-[48px] transition-colors">x{speed}</button>
             <button onClick={() => nudge('down')} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors">
               <ChevronDown className="w-5 h-5" />
             </button>
@@ -312,7 +372,6 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
             )}
           </div>
 
-          {/* 録画ガイドセクション */}
           <div className="mt-4 bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex-shrink-0">
             {widgetId ? (
               <p className="text-sm text-gray-600 text-center">
@@ -335,6 +394,160 @@ export default function StudioStep1({ teleprompterText, setTeleprompterText, cha
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* AI一括生成 */}
+      {tab === 'bulk' && (
+        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
+          {!bulkResult ? (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 max-w-2xl mx-auto w-full">
+              <div className="flex items-center gap-2 mb-5">
+                <Wand2 className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-lg font-bold text-gray-900">コース全体を1回のAIコールで一括生成</h3>
+              </div>
+              <p className="text-sm text-gray-600 mb-5 leading-relaxed">
+                コーステーマと対象者を伝えると、AIがコース全体の構成（タイトル/説明/全レッスンの内容）を一気に生成します。
+                生成後は内容を確認してから確定してください。
+              </p>
+
+              {userOverridesCount > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-800">
+                  手動編集されたフィールド（{userOverridesCount}件）は再生成しても保護されます。
+                  <button onClick={onRegenerateAll}
+                    className="ml-2 underline font-medium hover:text-amber-900">保護を解除</button>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">コーステーマ / 対象者 <span className="text-red-500">*</span></label>
+                  <textarea
+                    value={bulkTheme}
+                    onChange={e => setBulkTheme(e.target.value)}
+                    rows={3}
+                    placeholder="例: 副業で月5万円を目指す会社員向けの、Notion活用入門コース"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm resize-none transition"
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">レッスン数</label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={20}
+                      value={bulkLessonCount}
+                      onChange={e => setBulkLessonCount(Math.max(5, Math.min(20, Number(e.target.value) || 5)))}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm transition"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">5〜20レッスン。11以上は自動セクション分け。</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">トーン</label>
+                    <select
+                      value={bulkTone}
+                      onChange={e => setBulkTone(e.target.value as BulkGenerateInput['tone'])}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm bg-white transition"
+                    >
+                      {TONE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {bulkError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                    {bulkError}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleBulkGenerate}
+                  disabled={!bulkTheme.trim() || bulkGenerating}
+                  className="w-full inline-flex items-center justify-center gap-2 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 disabled:opacity-40 transition-colors shadow-sm"
+                >
+                  {bulkGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                  {bulkGenerating ? 'AIが生成中...' : 'AI一括生成'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            // プレビュー画面
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 max-w-2xl mx-auto w-full">
+              <div className="flex items-center gap-2 mb-4">
+                <Check className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-lg font-bold text-gray-900">生成結果のプレビュー</h3>
+              </div>
+              <p className="text-xs text-gray-500 mb-5">確定すると、Step 2のチャプター構成に反映されます。手動編集済みのフィールドは保護されます。</p>
+
+              <div className="space-y-4 mb-5">
+                <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
+                  <p className="text-xs text-emerald-700 font-medium mb-1">コースタイトル</p>
+                  <p className="text-base font-bold text-gray-900">{bulkResult.courseTitle}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <p className="text-xs text-gray-500 font-medium mb-1">コース説明</p>
+                  <p className="text-sm text-gray-800 leading-relaxed">{bulkResult.courseDescription}</p>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <p className="text-xs text-gray-500 font-medium mb-1">サムネ用コピー</p>
+                    <p className="text-xs text-gray-700">{bulkResult.thumbnailCopy}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <p className="text-xs text-gray-500 font-medium mb-1">所要時間</p>
+                    <p className="text-sm font-medium text-gray-900">{bulkResult.totalDuration}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs text-gray-500 font-medium mb-2">全レッスン（{bulkResult.lessons.length}件）</p>
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {bulkResult.lessons.map((lesson, i) => (
+                      <div key={i} className="bg-white border border-gray-200 rounded-lg p-3">
+                        {lesson.section && (
+                          <p className="text-xs text-emerald-600 font-medium mb-1">{lesson.section}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center">{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{lesson.title}</p>
+                            <p className="text-xs text-gray-600 mt-1 leading-relaxed">{lesson.description}</p>
+                            {lesson.learningGoal && (
+                              <p className="text-xs text-emerald-700 mt-1">🎯 {lesson.learningGoal}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={handleBulkConfirm}
+                  className="flex-1 inline-flex items-center justify-center gap-2 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
+                >
+                  <Check className="w-5 h-5" /> この内容で確定
+                </button>
+                <button
+                  onClick={handleBulkRegenerateAll}
+                  disabled={bulkGenerating}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" /> 全部作り直す
+                </button>
+                <button
+                  onClick={() => setBulkResult(null)}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                >
+                  入力に戻る
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
