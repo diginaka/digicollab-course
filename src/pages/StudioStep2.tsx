@@ -71,6 +71,8 @@ export default function StudioStep2({ chapters, setChapters, onNext, onBack }: P
       attachments: [],
       duration: '',
       sortOrder: chapters.length,
+      videoSource: null,
+      recordingId: null,
     }
     setEditingChapter(newChapter)
     setEditIndex(-1)

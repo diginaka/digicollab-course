@@ -4,6 +4,7 @@ import { copyToClipboard } from '../lib/utils'
 import { addHistory, loadSettings } from '../lib/storage'
 import { supabase, getOrCreateSubdomain, loadProSettings } from '../lib/supabase'
 import { generateSlug } from '../lib/slug'
+import { mapChapterToDb } from '../lib/chapter-mapper'
 import type { Chapter } from '../types'
 
 interface Props {
@@ -121,16 +122,7 @@ export default function StudioStep3({
         chapter_count: chapters.length,
         video_count: videoCount,
         total_duration: totalDuration || '',
-        chapters: chapters.map((ch, i) => ({
-          id: `ch-${String(i + 1).padStart(2, '0')}`,
-          title: ch.title,
-          video_url: ch.videoUrl,
-          video_type: ch.videoType,
-          text_content: ch.textContent || '',
-          attachments: (ch.attachments || []).filter(a => a.trim()),
-          display_number: String(i + 1),
-          duration: ch.duration || '',
-        })),
+        chapters: chapters.map((ch, i) => mapChapterToDb(ch, i)),
         current_chapter_id: 'ch-01',
         seller_name: (user.user_metadata as Record<string, string> | null)?.name || '',
         seller_email: user.email,

@@ -1,13 +1,20 @@
+import type { VideoSource } from './components/video-source/types'
+
 // チャプターデータ
+// videoType: 既存の埋め込み/URL種別（後方互換）。'bunny' は record/library/upload/ai_generated のマーカー。
+// videoSource: Phase 1 で導入した動画ソースの一次分類（null は旧データ）。
+// recordingId: fb_recordings.id 参照（recording / library で動画を紐付けた場合のみ）。
 export interface Chapter {
   id: string
   title: string
-  videoType: 'youtube' | 'vimeo' | 'gdrive' | 'other'
+  videoType: 'youtube' | 'vimeo' | 'gdrive' | 'other' | 'bunny'
   videoUrl: string
   textContent: string
   attachments: string[]
   duration: string
   sortOrder: number
+  videoSource: VideoSource | null
+  recordingId: string | null
 }
 
 // pagesテーブル用コースパッケージ（フロービルダー統合）
