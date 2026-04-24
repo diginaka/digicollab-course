@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react'
-import { ArrowLeft, Rocket, Copy, ExternalLink, Check, Video, Lock, Loader2, Image, Pencil, FilePlus } from 'lucide-react'
+import { useState, useCallback, useEffect } from 'react'
+import { ArrowLeft, Rocket, Copy, ExternalLink, Check, Video, Lock, Loader2, Image, Pencil, FilePlus, HardDrive } from 'lucide-react'
 import { copyToClipboard } from '../lib/utils'
 import { addHistory, loadSettings } from '../lib/storage'
 import { supabase, getOrCreateSubdomain, loadProSettings } from '../lib/supabase'
 import { generateSlug } from '../lib/slug'
 import { mapChapterToDb } from '../lib/chapter-mapper'
+import { getMyStorageUsage, type StorageUsage } from '../lib/storage-usage'
 import type { Chapter } from '../types'
 
 interface Props {
@@ -69,9 +70,16 @@ export default function StudioStep3({
   const [published, setPublished] = useState(false)
   const [viewerUrl, setViewerUrl] = useState('')
   const [copied, setCopied] = useState('')
+  const [storage, setStorage] = useState<StorageUsage | null>(null)
 
   const isEditing = !!editingPageId
   const videoCount = chapters.filter(c => c.videoUrl).length
+
+  useEffect(() => {
+    getMyStorageUsage()
+      .then(setStorage)
+      .catch((err) => console.error('Failed to load storage usage:', err))
+  }, [])
 
   const handleCopy = useCallback(async (text: string, key: string) => {
     await copyToClipboard(text)
@@ -309,7 +317,7 @@ export default function StudioStep3({
         {/* サマリー */}
         <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
           <h3 className="text-sm font-bold text-gray-700 mb-3">発行サマリー</h3>
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
             <div>
               <p className="text-2xl font-bold text-emerald-600">{chapters.length}</p>
               <p className="text-xs text-gray-500">チャプター</p>
@@ -326,6 +334,7 @@ export default function StudioStep3({
               </p>
               <p className="text-xs text-gray-500">パスワード</p>
             </div>
+            <StorageSummary storage={storage} />
           </div>
         </div>
 
@@ -342,6 +351,55 @@ export default function StudioStep3({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function StorageSummary({ storage }: { storage: StorageUsage | null }) {
+  if (!storage) {
+    return (
+      <div>
+        <p className="text-2xl font-bold text-gray-300 flex items-center justify-center gap-1">
+          <HardDrive className="w-5 h-5" /> --
+        </p>
+        <p className="text-xs text-gray-500">ストレージ</p>
+      </div>
+    )
+  }
+
+  const limit = storage.limitGb
+  const used = storage.totalGb
+  const ratio = limit ? Math.min(used / limit, 1) : 0
+  const percent = ratio * 100
+
+  // 80%超は黄、95%超は赤
+  const color = !limit
+    ? '#059669' // emerald-600
+    : percent >= 95
+    ? '#dc2626' // red-600
+    : percent >= 80
+    ? '#d97706' // amber-600
+    : '#059669'
+
+  return (
+    <div>
+      <p
+        className="text-2xl font-bold flex items-center justify-center gap-1"
+        style={{ color }}
+      >
+        <HardDrive className="w-5 h-5" /> {used.toFixed(1)}
+      </p>
+      <p className="text-xs text-gray-500">
+        GB / {limit ?? '∞'} GB
+      </p>
+      {limit && (
+        <div className="mt-1.5 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div
+            className="h-full transition-all"
+            style={{ width: `${percent}%`, backgroundColor: color }}
+          />
+        </div>
+      )}
     </div>
   )
 }
