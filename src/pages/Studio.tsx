@@ -19,7 +19,6 @@ export default function Studio() {
   // 制作state
   const [step, setStep] = useState(0)
   const [chapters, setChapters] = useState<Chapter[]>([])
-  const [teleprompterText, setTeleprompterText] = useState('')
   const [showHistory, setShowHistory] = useState(false)
   const [editingPageId, setEditingPageId] = useState<string | null>(null)
 
@@ -157,7 +156,6 @@ export default function Studio() {
     setCompletionMessage('')
     setCompletionCtaLabel('')
     setChapters([])
-    setTeleprompterText('')
     setUserOverrides({})
     setEditingPageId(null)
     setStep(0)
@@ -206,9 +204,6 @@ export default function Studio() {
       <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 overflow-y-auto min-h-0">
         {step === 0 && (
           <StudioStep1
-            teleprompterText={teleprompterText}
-            setTeleprompterText={setTeleprompterText}
-            chapters={chapters}
             onNext={() => setStep(1)}
             onBulkApply={handleBulkApply}
             onRegenerateAll={handleRegenerateAll}
