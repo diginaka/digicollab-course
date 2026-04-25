@@ -8,6 +8,7 @@ import { loadHistory } from '../lib/storage'
 import { supabase } from '../lib/supabase'
 import { generateId } from '../lib/utils'
 import { mergeDescriptionAndGoal } from '../lib/bulkGenerate'
+import { mapDbToChapter } from '../lib/chapter-mapper'
 import type { Chapter, HistoryEntry, GeneratedCourse, UserOverrides } from '../types'
 
 const stepLabels = ['企画', 'コンテンツ', '公開']
@@ -18,7 +19,6 @@ export default function Studio() {
   // 制作state
   const [step, setStep] = useState(0)
   const [chapters, setChapters] = useState<Chapter[]>([])
-  const [teleprompterText, setTeleprompterText] = useState('')
   const [showHistory, setShowHistory] = useState(false)
   const [editingPageId, setEditingPageId] = useState<string | null>(null)
 
@@ -61,6 +61,8 @@ export default function Studio() {
         attachments: existing?.attachments || [],
         duration: existing?.duration || '',
         sortOrder: i,
+        videoSource: existing?.videoSource ?? null,
+        recordingId: existing?.recordingId ?? null,
       }
     })
     setChapters(newChapters)
@@ -119,16 +121,7 @@ export default function Studio() {
       setThumbnailUrl(String(data.og_image_url || ''))
 
       const slotChapters = (slots.chapters as Record<string, unknown>[]) || []
-      setChapters(slotChapters.map((ch, i) => ({
-        id: String(ch.id || `ch-${i}`),
-        title: String(ch.title || ''),
-        videoType: (['youtube', 'vimeo', 'gdrive', 'other'].includes(String(ch.video_type)) ? ch.video_type : 'vimeo') as Chapter['videoType'],
-        videoUrl: String(ch.video_url || ''),
-        textContent: String(ch.text_content || ''),
-        attachments: Array.isArray(ch.attachments) ? ch.attachments.map(String) : [],
-        duration: String(ch.duration || ''),
-        sortOrder: i,
-      })))
+      setChapters(slotChapters.map((ch, i) => mapDbToChapter(ch, i)))
 
       // メタデータ復元
       setThumbnailCopy(String(slots.thumbnail_copy || ''))
@@ -163,7 +156,6 @@ export default function Studio() {
     setCompletionMessage('')
     setCompletionCtaLabel('')
     setChapters([])
-    setTeleprompterText('')
     setUserOverrides({})
     setEditingPageId(null)
     setStep(0)
@@ -212,9 +204,6 @@ export default function Studio() {
       <div className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 overflow-y-auto min-h-0">
         {step === 0 && (
           <StudioStep1
-            teleprompterText={teleprompterText}
-            setTeleprompterText={setTeleprompterText}
-            chapters={chapters}
             onNext={() => setStep(1)}
             onBulkApply={handleBulkApply}
             onRegenerateAll={handleRegenerateAll}
