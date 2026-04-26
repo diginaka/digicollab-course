@@ -12,7 +12,7 @@ const CARDS: CardDef[] = [
   { source: 'recording',    icon: '🎥', title: '録画する',          description: 'プロンプター内蔵レコーダーで撮影' },
   { source: 'ai_generated', icon: '✨', title: 'AI動画生成',         description: '台本からスライド動画を自動生成' },
   { source: 'library',      icon: '📚', title: 'ライブラリから選択', description: '既存の録画・生成済み動画を再利用' },
-  { source: 'upload',       icon: '⬆',  title: 'アップロード',       description: '手元のMP4をBunneyに直アップ' },
+  { source: 'upload',       icon: '⬆',  title: 'アップロード',       description: '手元の MP4 を直接アップロード' },
   { source: 'external_url', icon: '🔗', title: '外部URLを貼る',      description: 'Vimeo / YouTube / 直URL（既存互換）', fullWidth: true },
 ]
 
